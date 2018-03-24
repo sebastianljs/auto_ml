@@ -4,8 +4,9 @@ import autosklearn.classification
 import sklearn.datasets
 import sklearn.metrics
 import sklearn.model_selection
-import numpy
-
+import pickle
+import os
+from auto_ml.settings import MODEL_DIR
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -21,29 +22,34 @@ NAME_TO_LOAD_FUNC = {"digits": sklearn.datasets.load_digits,
                      "breast_cancer": sklearn.datasets.load_breast_cancer}
 
 
-def load_data():
+def load_data() -> dict:
+    """
+
+    :return: dict of dataset names and (features, target) tuple
+    """
     # These are functions to load datasets suitable for classification problems
 
     return {name: load_func(return_X_y=True)
             for name, load_func in NAME_TO_LOAD_FUNC.items()}
 
 
-def train_automl_model(features_train: numpy.ndarray,
-                       target_train: numpy.ndarray) -> autosklearn.classification.AutoSklearnClassifier:
-    """
-    Trains an automl model
-    :param features_train: Features
-    :param target_train: Target
-    :return: automl model
-    :rtype: autosklearn.classfication.AutoSklearnClassifier
-    """
-    automl = autosklearn.classification.AutoSklearnClassifier()
-    automl.fit(features_train, target_train)
-    return automl
+class AutoMLClassifier(autosklearn.classification.AutoSklearnClassifier):
+    def save(self, output_file: str):
+        pickle.dump(self, output_file)
 
 
 def main():
-    pass
+    name_to_data = load_data()
+    for name, data in name_to_data.items():
+        feat, tgt = data
+        feat_train, feat_test, tgt_train, tgt_test = \
+            sklearn.model_selection.train_test_split(feat, tgt, random_state=1)
+        automl = AutoMLClassifier()
+        automl.fit(feat_train, tgt_train)
+        model_path = os.path.join(MODEL_DIR, "{}.pkl".format(name))
+        automl.save(model_path)
+        predictions = automl.predict(feat_test)
+        logger.info("accuracy score: {}".format(sklearn.metrics.accuracy_score(tgt_test, predictions)))
 
 
 if __name__ == "__main__":
