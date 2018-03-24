@@ -7,6 +7,7 @@ import sklearn.model_selection
 import pickle
 import os
 from auto_ml.settings import MODEL_DIR
+from concurrent import futures
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -38,18 +39,23 @@ class AutoMLClassifier(autosklearn.classification.AutoSklearnClassifier):
         pickle.dump(self, output_file)
 
 
+def train_save_model(name_data_tup: tuple):
+    name, data = name_data_tup
+    feat, tgt = data
+    feat_train, feat_test, tgt_train, tgt_test = \
+        sklearn.model_selection.train_test_split(feat, tgt, random_state=1)
+    automl = AutoMLClassifier()
+    automl.fit(feat_train, tgt_train)
+    model_path = os.path.join(MODEL_DIR, "{}.pkl".format(name))
+    automl.save(model_path)
+
+
 def main():
     name_to_data = load_data()
-    for name, data in name_to_data.items():
-        feat, tgt = data
-        feat_train, feat_test, tgt_train, tgt_test = \
-            sklearn.model_selection.train_test_split(feat, tgt, random_state=1)
-        automl = AutoMLClassifier()
-        automl.fit(feat_train, tgt_train)
-        model_path = os.path.join(MODEL_DIR, "{}.pkl".format(name))
-        automl.save(model_path)
-        predictions = automl.predict(feat_test)
-        logger.info("accuracy score: {}".format(sklearn.metrics.accuracy_score(tgt_test, predictions)))
+    train_save_args = [(name, data) for name, data in name_to_data.items()]
+    with futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
+        for model in pool.map(train_save_model, train_save_args):
+            print(model)
 
 
 if __name__ == "__main__":
